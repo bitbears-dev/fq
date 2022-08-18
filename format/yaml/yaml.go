@@ -4,9 +4,11 @@ package yaml
 
 import (
 	"embed"
+	"errors"
+	"io"
 
 	"github.com/wader/fq/format"
-	"github.com/wader/fq/internal/gojqextra"
+	"github.com/wader/fq/internal/gojqex"
 	"github.com/wader/fq/pkg/bitio"
 	"github.com/wader/fq/pkg/decode"
 	"github.com/wader/fq/pkg/interp"
@@ -21,7 +23,7 @@ func init() {
 	interp.RegisterFormat(decode.Format{
 		Name:        format.YAML,
 		Description: "YAML Ain't Markup Language",
-		ProbeOrder:  format.ProbeOrderText,
+		ProbeOrder:  format.ProbeOrderTextFuzzy,
 		Groups:      []string{format.PROBE},
 		DecodeFn:    decodeYAML,
 		Functions:   []string{"_todisplay"},
@@ -34,9 +36,14 @@ func decodeYAML(d *decode.D, _ any) any {
 	br := d.RawLen(d.Len())
 	var r any
 
-	if err := yaml.NewDecoder(bitio.NewIOReader(br)).Decode(&r); err != nil {
+	yd := yaml.NewDecoder(bitio.NewIOReader(br))
+	if err := yd.Decode(&r); err != nil {
 		d.Fatalf("%s", err)
 	}
+	if err := yd.Decode(new(any)); !errors.Is(err, io.EOF) {
+		d.Fatalf("trialing data after top-level value")
+	}
+
 	var s scalar.S
 	s.Actual = r
 
@@ -54,7 +61,7 @@ func decodeYAML(d *decode.D, _ any) any {
 }
 
 func toYAML(_ *interp.Interp, c any) any {
-	b, err := yaml.Marshal(gojqextra.Normalize(c))
+	b, err := yaml.Marshal(gojqex.Normalize(c))
 	if err != nil {
 		return err
 	}

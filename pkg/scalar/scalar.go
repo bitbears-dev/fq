@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/wader/fq/internal/bitioextra"
+	"github.com/wader/fq/internal/bitioex"
 	"github.com/wader/fq/pkg/bitio"
 )
 
@@ -103,11 +103,14 @@ func ActualTrim(cutset string) ActualStrFn {
 
 var ActualTrimSpace = ActualStrFn(strings.TrimSpace)
 
-func strMapToSym(fn func(s string) (any, error)) Mapper {
+func strMapToSym(fn func(s string) (any, error), try bool) Mapper {
 	return Fn(func(s S) (S, error) {
 		ts := strings.TrimSpace(s.ActualStr())
 		n, err := fn(ts)
 		if err != nil {
+			if try {
+				return s, nil
+			}
 			return s, err
 		}
 		s.Sym = n
@@ -115,16 +118,28 @@ func strMapToSym(fn func(s string) (any, error)) Mapper {
 	})
 }
 
+func TrySymUParseUint(base int) Mapper {
+	return strMapToSym(func(s string) (any, error) { return strconv.ParseUint(s, base, 64) }, true)
+}
+
+func TrySymSParseInt(base int) Mapper {
+	return strMapToSym(func(s string) (any, error) { return strconv.ParseInt(s, base, 64) }, true)
+}
+
+func TrySymFParseFloat(base int) Mapper {
+	return strMapToSym(func(s string) (any, error) { return strconv.ParseFloat(s, base) }, true)
+}
+
 func SymUParseUint(base int) Mapper {
-	return strMapToSym(func(s string) (any, error) { return strconv.ParseUint(s, base, 64) })
+	return strMapToSym(func(s string) (any, error) { return strconv.ParseUint(s, base, 64) }, false)
 }
 
 func SymSParseInt(base int) Mapper {
-	return strMapToSym(func(s string) (any, error) { return strconv.ParseInt(s, base, 64) })
+	return strMapToSym(func(s string) (any, error) { return strconv.ParseInt(s, base, 64) }, false)
 }
 
 func SymFParseFloat(base int) Mapper {
-	return strMapToSym(func(s string) (any, error) { return strconv.ParseFloat(s, base) })
+	return strMapToSym(func(s string) (any, error) { return strconv.ParseFloat(s, base) }, false)
 }
 
 type URangeEntry struct {
@@ -172,7 +187,7 @@ func (rs SRangeToScalar) MapScalar(s S) (S, error) {
 
 func RawSym(s S, nBytes int, fn func(b []byte) string) (S, error) {
 	br := s.ActualBitBuf()
-	brLen, err := bitioextra.Len(br)
+	brLen, err := bitioex.Len(br)
 	if err != nil {
 		return S{}, err
 	}
@@ -217,7 +232,7 @@ func (m BytesToScalar) MapScalar(s S) (S, error) {
 		return s, err
 	}
 	bb := &bytes.Buffer{}
-	if _, err := bitioextra.CopyBits(bb, rc); err != nil {
+	if _, err := bitioex.CopyBits(bb, rc); err != nil {
 		return s, err
 	}
 	for _, bs := range m {

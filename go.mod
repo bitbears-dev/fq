@@ -4,7 +4,7 @@ go 1.18
 
 require (
 	// fork of github.com/itchyny/gojq, see github.com/wader/gojq fq branch
-	github.com/wader/gojq v0.12.1-0.20220726134752-5daae754d327
+	github.com/wader/gojq v0.12.1-0.20220816100300-d38cb82d00bf
 	// fork of github.com/chzyer/readline, see github.com/wader/readline fq branch
 	github.com/wader/readline v0.0.0-20220704090837-31be50517a56
 )
@@ -41,6 +41,9 @@ require (
 	// has no tags
 	// go get -d golang.org/x/crypto@master && go mod tidy
 	golang.org/x/crypto v0.0.0-20220622213112-05595931fe9d
+	// has no tags
+	// go get -d golang.org/x/exp@master && go mod tidy
+	golang.org/x/exp v0.0.0-20220722155223-a9213eeb770e
 	// has no tags
 	// go get -d golang.org/x/net@master && go mod tidy
 	golang.org/x/net v0.0.0-20220630215102-69896b714898
