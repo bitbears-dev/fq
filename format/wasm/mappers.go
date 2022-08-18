@@ -56,6 +56,9 @@ var valtypeToSymMapper = &valtypeToSym{}
 type valtypeToSym struct {
 }
 
+// valtype ::= t:numtype => t
+//          |  t:vectype => t
+//          |  t:reftype => t
 func (m *valtypeToSym) MapScalar(s scalar.S) (scalar.S, error) {
 	v, ok := s.Actual.(uint64)
 	if !ok {
@@ -143,6 +146,8 @@ var reftypeTagToSym = &reftypeTagToSymMapper{}
 type reftypeTagToSymMapper struct {
 }
 
+// reftype ::= 0x70 => funcref
+//          |  0x6F => externref
 func (m *reftypeTagToSymMapper) MapScalar(s scalar.S) (scalar.S, error) {
 	v, ok := s.Actual.(uint64)
 	if !ok {

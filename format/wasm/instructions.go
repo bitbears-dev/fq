@@ -5,6 +5,38 @@ import (
 	"github.com/wader/fq/pkg/scalar"
 )
 
+func decodeBlockType(d *decode.D, name string) {
+	b := d.PeekBytes(1)[0]
+	switch b {
+	case 0x40:
+		d.FieldU8(name, scalar.Sym("ε"))
+	case 0x6f, 0x70, 0x7b, 0x7c, 0x7d, 0x7e, 0x7f:
+		d.FieldU8(name, valtypeToSymMapper)
+	default:
+		d.FieldSScalarFn(name, readSignedLEB128)
+	}
+}
+
+func decodeMemArg(d *decode.D, name string) {
+	d.FieldStruct(name, func(d *decode.D) {
+		fieldU32(d, "a")
+		fieldU32(d, "o")
+	})
+}
+
+// expr ::= (in:instr)* 0x0B => in* end
+func decodeExpr(d *decode.D, name string) {
+	d.FieldArray(name, func(d *decode.D) {
+		for {
+			b := d.PeekBytes(1)[0]
+			d.FieldStruct("in", decodeInstruction)
+			if b == 0x0b {
+				break
+			}
+		}
+	})
+}
+
 func decodeInstruction(d *decode.D) {
 	instr := d.PeekBytes(1)
 	if len(instr) == 0 {
@@ -412,7 +444,7 @@ func decodeInstructionWithoutOperands(d *decode.D, name string, i byte) {
 
 func decodeBlock(d *decode.D) {
 	d.FieldU8("block", d.AssertU(0x02), scalar.ActualHex)
-	decodeBlockType(d)
+	decodeBlockType(d, "bt")
 	d.FieldArray("instructions", func(d *decode.D) {
 		for {
 			b := d.PeekBytes(1)[0]
@@ -427,7 +459,7 @@ func decodeBlock(d *decode.D) {
 
 func decodeLoop(d *decode.D) {
 	d.FieldU8("loop", d.AssertU(0x03), scalar.ActualHex)
-	decodeBlockType(d)
+	decodeBlockType(d, "bt")
 	d.FieldArray("instructions", func(d *decode.D) {
 		for {
 			b := d.PeekBytes(1)[0]
@@ -442,7 +474,7 @@ func decodeLoop(d *decode.D) {
 
 func decodeIf(d *decode.D) {
 	d.FieldU8("if", d.AssertU(0x04), scalar.ActualHex)
-	decodeBlockType(d)
+	decodeBlockType(d, "bt")
 	elseClause := false
 	d.FieldArray("in1", func(d *decode.D) {
 		for {
@@ -488,12 +520,10 @@ func decodeBrIf(d *decode.D) {
 
 func decodeBrTable(d *decode.D) {
 	d.FieldU8("br_table", d.AssertU(0x0e), scalar.ActualHex)
-	d.FieldStruct("table", func(d *decode.D) {
-		decodeVec(d, func(d *decode.D) {
-			decodeLabelIdx(d, "l")
-		})
+	decodeVec(d, "l", func(d *decode.D) {
+		decodeLabelIdx(d, "l")
 	})
-	decodeLabelIdx(d, "l")
+	decodeLabelIdx(d, "lN")
 }
 
 func decodeCall(d *decode.D) {
@@ -509,8 +539,8 @@ func decodeCallIndirect(d *decode.D) {
 
 func decodeSelectT(d *decode.D) {
 	d.FieldU8("select", d.AssertU(0x1c), scalar.ActualHex)
-	decodeVec(d, func(d *decode.D) {
-		decodeValType(d)
+	decodeVec(d, "t", func(d *decode.D) {
+		decodeValType(d, "t")
 	})
 }
 
@@ -551,117 +581,117 @@ func decodeTableSet(d *decode.D) {
 
 func decodeI32Load(d *decode.D) {
 	d.FieldU8("i32.load", d.AssertU(0x28), scalar.ActualHex)
-	decodeMemArg(d)
+	decodeMemArg(d, "m")
 }
 
 func decodeI64Load(d *decode.D) {
 	d.FieldU8("i64.load", d.AssertU(0x29), scalar.ActualHex)
-	decodeMemArg(d)
+	decodeMemArg(d, "m")
 }
 
 func decodeF32Load(d *decode.D) {
 	d.FieldU8("f32.load", d.AssertU(0x2a), scalar.ActualHex)
-	decodeMemArg(d)
+	decodeMemArg(d, "m")
 }
 
 func decodeF64Load(d *decode.D) {
 	d.FieldU8("f64.load", d.AssertU(0x2b), scalar.ActualHex)
-	decodeMemArg(d)
+	decodeMemArg(d, "m")
 }
 
 func decodeI32Load8S(d *decode.D) {
 	d.FieldU8("i32.load8_s", d.AssertU(0x2c), scalar.ActualHex)
-	decodeMemArg(d)
+	decodeMemArg(d, "m")
 }
 
 func decodeI32Load8U(d *decode.D) {
 	d.FieldU8("i32.load8_u", d.AssertU(0x2d), scalar.ActualHex)
-	decodeMemArg(d)
+	decodeMemArg(d, "m")
 }
 
 func decodeI32Load16S(d *decode.D) {
 	d.FieldU8("i32.load16_s", d.AssertU(0x2e), scalar.ActualHex)
-	decodeMemArg(d)
+	decodeMemArg(d, "m")
 }
 
 func decodeI32Load16U(d *decode.D) {
 	d.FieldU8("i32.load16_u", d.AssertU(0x2f), scalar.ActualHex)
-	decodeMemArg(d)
+	decodeMemArg(d, "m")
 }
 
 func decodeI64Load8S(d *decode.D) {
 	d.FieldU8("i64.load8_s", d.AssertU(0x30), scalar.ActualHex)
-	decodeMemArg(d)
+	decodeMemArg(d, "m")
 }
 
 func decodeI64Load8U(d *decode.D) {
 	d.FieldU8("i64.load8_u", d.AssertU(0x31), scalar.ActualHex)
-	decodeMemArg(d)
+	decodeMemArg(d, "m")
 }
 
 func decodeI64Load16S(d *decode.D) {
 	d.FieldU8("i64.load16_s", d.AssertU(0x32), scalar.ActualHex)
-	decodeMemArg(d)
+	decodeMemArg(d, "m")
 }
 
 func decodeI64Load16U(d *decode.D) {
 	d.FieldU8("i64.load16_u", d.AssertU(0x33), scalar.ActualHex)
-	decodeMemArg(d)
+	decodeMemArg(d, "m")
 }
 
 func decodeI64Load32S(d *decode.D) {
 	d.FieldU8("i64.load32_s", d.AssertU(0x34), scalar.ActualHex)
-	decodeMemArg(d)
+	decodeMemArg(d, "m")
 }
 
 func decodeI64Load32U(d *decode.D) {
 	d.FieldU8("i64.load32_u", d.AssertU(0x35), scalar.ActualHex)
-	decodeMemArg(d)
+	decodeMemArg(d, "m")
 }
 
 func decodeI32Store(d *decode.D) {
 	d.FieldU8("i32.store", d.AssertU(0x36), scalar.ActualHex)
-	decodeMemArg(d)
+	decodeMemArg(d, "m")
 }
 
 func decodeI64Store(d *decode.D) {
 	d.FieldU8("i64.store", d.AssertU(0x37), scalar.ActualHex)
-	decodeMemArg(d)
+	decodeMemArg(d, "m")
 }
 
 func decodeF32Store(d *decode.D) {
 	d.FieldU8("f32.store", d.AssertU(0x38), scalar.ActualHex)
-	decodeMemArg(d)
+	decodeMemArg(d, "m")
 }
 
 func decodeF64Store(d *decode.D) {
 	d.FieldU8("f64.store", d.AssertU(0x39), scalar.ActualHex)
-	decodeMemArg(d)
+	decodeMemArg(d, "m")
 }
 
 func decodeI32Store8(d *decode.D) {
 	d.FieldU8("i32.store8", d.AssertU(0x3a), scalar.ActualHex)
-	decodeMemArg(d)
+	decodeMemArg(d, "m")
 }
 
 func decodeI32Store16(d *decode.D) {
 	d.FieldU8("i32.store16", d.AssertU(0x3b), scalar.ActualHex)
-	decodeMemArg(d)
+	decodeMemArg(d, "m")
 }
 
 func decodeI64Store8(d *decode.D) {
 	d.FieldU8("i64.store8", d.AssertU(0x3c), scalar.ActualHex)
-	decodeMemArg(d)
+	decodeMemArg(d, "m")
 }
 
 func decodeI64Store16(d *decode.D) {
 	d.FieldU8("i64.store16", d.AssertU(0x3d), scalar.ActualHex)
-	decodeMemArg(d)
+	decodeMemArg(d, "m")
 }
 
 func decodeI64Store32(d *decode.D) {
 	d.FieldU8("i64.store32", d.AssertU(0x3e), scalar.ActualHex)
-	decodeMemArg(d)
+	decodeMemArg(d, "m")
 }
 
 func decodeMemorySize(d *decode.D) {
@@ -696,7 +726,7 @@ func decodeF64Const(d *decode.D) {
 
 func decodeRefNull(d *decode.D) {
 	d.FieldU8("ref.null", d.AssertU(0xd0), scalar.ActualHex)
-	decodeRefType(d)
+	decodeRefType(d, "t")
 }
 
 func decodeRefFunc(d *decode.D) {
@@ -1304,62 +1334,62 @@ func decodeVectorInstructionWithoutOperands(d *decode.D, name string, i uint64) 
 
 func decodeV128Load(d *decode.D) {
 	d.FieldUScalarFn("v128.load", readUnsignedLEB128, d.AssertU(0))
-	d.FieldStruct("m", decodeMemArg)
+	decodeMemArg(d, "m")
 }
 
 func decodeV128Load8x8S(d *decode.D) {
 	d.FieldUScalarFn("v128.load8x8_s", readUnsignedLEB128, d.AssertU(1))
-	d.FieldStruct("m", decodeMemArg)
+	decodeMemArg(d, "m")
 }
 
 func decodeV128Load8x8U(d *decode.D) {
 	d.FieldUScalarFn("v128.load8x8_u", readUnsignedLEB128, d.AssertU(2))
-	d.FieldStruct("m", decodeMemArg)
+	decodeMemArg(d, "m")
 }
 
 func decodeV128Load16x4S(d *decode.D) {
 	d.FieldUScalarFn("v128.load16x4_s", readUnsignedLEB128, d.AssertU(3))
-	d.FieldStruct("m", decodeMemArg)
+	decodeMemArg(d, "m")
 }
 
 func decodeV128Load16x4U(d *decode.D) {
 	d.FieldUScalarFn("v128.load16x4_u", readUnsignedLEB128, d.AssertU(4))
-	d.FieldStruct("m", decodeMemArg)
+	decodeMemArg(d, "m")
 }
 
 func decodeV128Load32x2S(d *decode.D) {
 	d.FieldUScalarFn("v128.load32x2_s", readUnsignedLEB128, d.AssertU(5))
-	d.FieldStruct("m", decodeMemArg)
+	decodeMemArg(d, "m")
 }
 
 func decodeV128Load32x2U(d *decode.D) {
 	d.FieldUScalarFn("v128.load32x2_u", readUnsignedLEB128, d.AssertU(6))
-	d.FieldStruct("m", decodeMemArg)
+	decodeMemArg(d, "m")
 }
 
 func decodeV128Load8Splat(d *decode.D) {
 	d.FieldUScalarFn("v128.load8_splat", readUnsignedLEB128, d.AssertU(7))
-	d.FieldStruct("m", decodeMemArg)
+	decodeMemArg(d, "m")
 }
 
 func decodeV128Load16Splat(d *decode.D) {
 	d.FieldUScalarFn("v128.load16_splat", readUnsignedLEB128, d.AssertU(8))
-	d.FieldStruct("m", decodeMemArg)
+	decodeMemArg(d, "m")
 }
 
 func decodeV128Load32Splat(d *decode.D) {
 	d.FieldUScalarFn("v128.load32_splat", readUnsignedLEB128, d.AssertU(9))
-	d.FieldStruct("m", decodeMemArg)
+	decodeMemArg(d, "m")
 }
 
 func decodeV128Load64Splat(d *decode.D) {
 	d.FieldUScalarFn("v128.load64_splat", readUnsignedLEB128, d.AssertU(10))
-	d.FieldStruct("m", decodeMemArg)
+	decodeMemArg(d, "m")
 }
 
 func decodeV128Store(d *decode.D) {
 	d.FieldUScalarFn("v128.store", readUnsignedLEB128, d.AssertU(11))
-	d.FieldStruct("m", decodeMemArg)
+	decodeMemArg(d, "m")
 }
 
 func decodeV128Const(d *decode.D) {
@@ -1371,139 +1401,139 @@ func decodeI8x16Shuffle(d *decode.D) {
 	d.FieldUScalarFn("i8x16.shuffle", readUnsignedLEB128, d.AssertU(13))
 	d.FieldArray("laneidx", func(d *decode.D) {
 		for i := 0; i < 16; i++ {
-			decodeLaneIdx(d)
+			decodeLaneIdx(d, "l")
 		}
 	})
 }
 
-func decodeLaneIdx(d *decode.D) {
-	d.FieldU8("laneidx")
+func decodeLaneIdx(d *decode.D, name string) {
+	d.FieldU8(name)
 }
 
 func decodeI8x16ExtractLaneS(d *decode.D) {
 	d.FieldUScalarFn("i8x16.extract_lane_s", readUnsignedLEB128, d.AssertU(21))
-	decodeLaneIdx(d)
+	decodeLaneIdx(d, "l")
 }
 
 func decodeI8x16ExtractLaneU(d *decode.D) {
 	d.FieldUScalarFn("i8x16.extract_lane_u", readUnsignedLEB128, d.AssertU(22))
-	decodeLaneIdx(d)
+	decodeLaneIdx(d, "l")
 }
 
 func decodeI8x16ReplaceLane(d *decode.D) {
 	d.FieldUScalarFn("i8x16.replace_lane", readUnsignedLEB128, d.AssertU(23))
-	decodeLaneIdx(d)
+	decodeLaneIdx(d, "l")
 }
 
 func decodeI16x8ExtractLaneS(d *decode.D) {
 	d.FieldUScalarFn("i16x8.extract_lane_s", readUnsignedLEB128, d.AssertU(24))
-	decodeLaneIdx(d)
+	decodeLaneIdx(d, "l")
 }
 
 func decodeI16x8ExtractLaneU(d *decode.D) {
 	d.FieldUScalarFn("i16x8.extract_lane_u", readUnsignedLEB128, d.AssertU(25))
-	decodeLaneIdx(d)
+	decodeLaneIdx(d, "l")
 }
 
 func decodeI16x8ReplaceLane(d *decode.D) {
 	d.FieldUScalarFn("i16x8.replace_lane", readUnsignedLEB128, d.AssertU(26))
-	decodeLaneIdx(d)
+	decodeLaneIdx(d, "l")
 }
 
 func decodeI32x4ExtractLane(d *decode.D) {
 	d.FieldUScalarFn("i32x4.extract_lane_u", readUnsignedLEB128, d.AssertU(27))
-	decodeLaneIdx(d)
+	decodeLaneIdx(d, "l")
 }
 
 func decodeI32x4ReplaceLane(d *decode.D) {
 	d.FieldUScalarFn("i32x4.replace_lane", readUnsignedLEB128, d.AssertU(28))
-	decodeLaneIdx(d)
+	decodeLaneIdx(d, "l")
 }
 
 func decodeI64x2ExtractLane(d *decode.D) {
 	d.FieldUScalarFn("i64x2.extract_lane_u", readUnsignedLEB128, d.AssertU(29))
-	decodeLaneIdx(d)
+	decodeLaneIdx(d, "l")
 }
 
 func decodeI64x2ReplaceLane(d *decode.D) {
 	d.FieldUScalarFn("i64x2.replace_lane", readUnsignedLEB128, d.AssertU(30))
-	decodeLaneIdx(d)
+	decodeLaneIdx(d, "l")
 }
 
 func decodeF32x4ExtractLane(d *decode.D) {
 	d.FieldUScalarFn("f32x4.extract_lane_u", readUnsignedLEB128, d.AssertU(31))
-	decodeLaneIdx(d)
+	decodeLaneIdx(d, "l")
 }
 
 func decodeF32x4ReplaceLane(d *decode.D) {
 	d.FieldUScalarFn("f32x4.replace_lane", readUnsignedLEB128, d.AssertU(32))
-	decodeLaneIdx(d)
+	decodeLaneIdx(d, "l")
 }
 
 func decodeF64x2ExtractLane(d *decode.D) {
 	d.FieldUScalarFn("f64x2.extract_lane_u", readUnsignedLEB128, d.AssertU(33))
-	decodeLaneIdx(d)
+	decodeLaneIdx(d, "l")
 }
 
 func decodeF64x2ReplaceLane(d *decode.D) {
 	d.FieldUScalarFn("f64x2.replace_lane", readUnsignedLEB128, d.AssertU(34))
-	decodeLaneIdx(d)
+	decodeLaneIdx(d, "l")
 }
 
 func decodeV128Load8Lane(d *decode.D) {
 	d.FieldUScalarFn("v128.load8_lane", readUnsignedLEB128, d.AssertU(84))
-	d.FieldStruct("m", decodeMemArg)
-	decodeLaneIdx(d)
+	decodeMemArg(d, "m")
+	decodeLaneIdx(d, "l")
 }
 
 func decodeV128Load16Lane(d *decode.D) {
 	d.FieldUScalarFn("v128.load16_lane", readUnsignedLEB128, d.AssertU(85))
-	d.FieldStruct("m", decodeMemArg)
-	decodeLaneIdx(d)
+	decodeMemArg(d, "m")
+	decodeLaneIdx(d, "l")
 }
 
 func decodeV128Load32Lane(d *decode.D) {
 	d.FieldUScalarFn("v128.load32_lane", readUnsignedLEB128, d.AssertU(86))
-	d.FieldStruct("m", decodeMemArg)
-	decodeLaneIdx(d)
+	decodeMemArg(d, "m")
+	decodeLaneIdx(d, "l")
 }
 
 func decodeV128Load64Lane(d *decode.D) {
 	d.FieldUScalarFn("v128.load64_lane", readUnsignedLEB128, d.AssertU(87))
-	d.FieldStruct("m", decodeMemArg)
-	decodeLaneIdx(d)
+	decodeMemArg(d, "m")
+	decodeLaneIdx(d, "l")
 }
 
 func decodeV128Store8Lane(d *decode.D) {
 	d.FieldUScalarFn("v128.store8_lane", readUnsignedLEB128, d.AssertU(88))
-	d.FieldStruct("m", decodeMemArg)
-	decodeLaneIdx(d)
+	decodeMemArg(d, "m")
+	decodeLaneIdx(d, "l")
 }
 
 func decodeV128Store16Lane(d *decode.D) {
 	d.FieldUScalarFn("v128.store16_lane", readUnsignedLEB128, d.AssertU(89))
-	d.FieldStruct("m", decodeMemArg)
-	decodeLaneIdx(d)
+	decodeMemArg(d, "m")
+	decodeLaneIdx(d, "l")
 }
 
 func decodeV128Store32Lane(d *decode.D) {
 	d.FieldUScalarFn("v128.store32_lane", readUnsignedLEB128, d.AssertU(90))
-	d.FieldStruct("m", decodeMemArg)
-	decodeLaneIdx(d)
+	decodeMemArg(d, "m")
+	decodeLaneIdx(d, "l")
 }
 
 func decodeV128Store64Lane(d *decode.D) {
 	d.FieldUScalarFn("v128.store64_lane", readUnsignedLEB128, d.AssertU(91))
-	d.FieldStruct("m", decodeMemArg)
-	decodeLaneIdx(d)
+	decodeMemArg(d, "m")
+	decodeLaneIdx(d, "l")
 }
 
 func decodeV128Load32Zero(d *decode.D) {
 	d.FieldUScalarFn("v128.load32_zero", readUnsignedLEB128, d.AssertU(92))
-	d.FieldStruct("m", decodeMemArg)
+	decodeMemArg(d, "m")
 }
 
 func decodeV128Load64Zero(d *decode.D) {
 	d.FieldUScalarFn("v128.load64_zero", readUnsignedLEB128, d.AssertU(93))
-	d.FieldStruct("m", decodeMemArg)
+	decodeMemArg(d, "m")
 }

@@ -32,7 +32,7 @@ tear_down() {
 
 (
   cd "$d"
-  rm -f './*.fqtest'
+  rm -f ./*.fqtest
 
   go build -o "$tmpdir/fq" "$d/../../../../"
   find "." -name '*.wasm' -print0 | sort -z -n |
