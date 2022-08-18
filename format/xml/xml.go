@@ -9,15 +9,18 @@ import (
 	"bytes"
 	"embed"
 	"encoding/xml"
+	"errors"
 	"html"
+	"io"
 	"regexp"
 	"sort"
 	"strconv"
 	"strings"
 
 	"github.com/wader/fq/format"
-	"github.com/wader/fq/internal/gojqextra"
+	"github.com/wader/fq/internal/gojqex"
 	"github.com/wader/fq/internal/proxysort"
+	"github.com/wader/fq/internal/stringsex"
 	"github.com/wader/fq/pkg/bitio"
 	"github.com/wader/fq/pkg/decode"
 	"github.com/wader/fq/pkg/interp"
@@ -31,7 +34,7 @@ func init() {
 	interp.RegisterFormat(decode.Format{
 		Name:        format.XML,
 		Description: "Extensible Markup Language",
-		ProbeOrder:  format.ProbeOrderText,
+		ProbeOrder:  format.ProbeOrderTextFuzzy,
 		Groups:      []string{format.PROBE},
 		DecodeFn:    decodeXML,
 		DecodeInArg: format.XMLIn{
@@ -69,6 +72,13 @@ func (n *xmlNode) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 type xmlNS struct {
 	name string
 	url  string
+}
+
+func elmName(space, local string) string {
+	if space == "" {
+		return local
+	}
+	return space + ":" + local
 }
 
 // xmlNNStack is used to undo namespace url resolving, space is url not the "alias" name
@@ -119,14 +129,12 @@ func fromXMLToArray(n xmlNode) any {
 			nodes = append(nodes, f(c, nss))
 		}
 
-		name, space := n.XMLName.Local, n.XMLName.Space
+		local, space := n.XMLName.Local, n.XMLName.Space
 		if space != "" {
 			space = nss.lookup(n.XMLName)
 		}
 		// only add if ns is found and not default ns
-		if space != "" {
-			name = space + ":" + name
-		}
+		name := elmName(space, local)
 		elm := []any{name}
 		if len(attrs) > 0 {
 			elm = append(elm, attrs)
@@ -167,14 +175,11 @@ func fromXMLToObject(n xmlNode, xi format.XMLIn) any {
 				nSeq = -1
 			}
 			local, space := nn.XMLName.Local, nn.XMLName.Space
-			name := local
 			if space != "" {
 				space = nss.lookup(nn.XMLName)
 			}
 			// only add if ns is found and not default ns
-			if space != "" {
-				name = space + ":" + name
-			}
+			name := elmName(space, local)
 			if e, ok := attrs[name]; ok {
 				if ea, ok := e.([]any); ok {
 					attrs[name] = append(ea, f(nn, nSeq, nss))
@@ -210,8 +215,6 @@ func fromXMLToObject(n xmlNode, xi format.XMLIn) any {
 	}
 }
 
-var wsRE *regexp.Regexp
-
 func decodeXML(d *decode.D, in any) any {
 	xi, _ := in.(format.XMLIn)
 
@@ -244,9 +247,27 @@ func decodeXML(d *decode.D, in any) any {
 		d.Fatalf("root not object or array")
 	}
 
-	d.SeekAbs(xd.InputOffset() * 8)
-	if d.RE(&wsRE, `^\s*$`) == nil {
-		d.Fatalf("root element has trailing data")
+	// continue decode to end and make sure there is only things we want to ignore
+	for {
+		d.SeekAbs(xd.InputOffset() * 8)
+		t, err := xd.Token()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+
+		switch t := t.(type) {
+		case xml.CharData:
+			if !whitespaceRE.Match([]byte(t)) {
+				d.Fatalf("root element has trailing non-whitespace %q", stringsex.TrimN(string(t), 50, "..."))
+			}
+			// ignore trailing whitespace
+		case xml.ProcInst:
+			// ignore trailing process instructions <?elm?>
+		case xml.StartElement:
+			d.Fatalf("root element has trailing element <%s>", elmName(t.Name.Space, t.Name.Local))
+		default:
+			d.Fatalf("root element has trailing data")
+		}
 	}
 
 	d.Value.V = &s
@@ -419,12 +440,12 @@ func toXMLFromArray(c any, opts ToXMLOpts) any {
 
 	ca, ok := c.([]any)
 	if !ok {
-		return gojqextra.FuncTypeError{Name: "toxml", V: c}
+		return gojqex.FuncTypeError{Name: "toxml", V: c}
 	}
 	n, ok := f(ca)
 	if !ok {
 		// TODO: better error
-		return gojqextra.FuncTypeError{Name: "toxml", V: c}
+		return gojqex.FuncTypeError{Name: "toxml", V: c}
 	}
 	bb := &bytes.Buffer{}
 	e := xml.NewEncoder(bb)
@@ -440,10 +461,10 @@ func toXMLFromArray(c any, opts ToXMLOpts) any {
 }
 
 func toXML(_ *interp.Interp, c any, opts ToXMLOpts) any {
-	if v, ok := gojqextra.Cast[map[string]any](c); ok {
-		return toXMLFromObject(gojqextra.NormalizeToStrings(v), opts)
-	} else if v, ok := gojqextra.Cast[[]any](c); ok {
-		return toXMLFromArray(gojqextra.NormalizeToStrings(v), opts)
+	if v, ok := gojqex.Cast[map[string]any](c); ok {
+		return toXMLFromObject(gojqex.NormalizeToStrings(v), opts)
+	} else if v, ok := gojqex.Cast[[]any](c); ok {
+		return toXMLFromArray(gojqex.NormalizeToStrings(v), opts)
 	}
-	return gojqextra.FuncTypeError{Name: "toxml", V: c}
+	return gojqex.FuncTypeError{Name: "toxml", V: c}
 }
